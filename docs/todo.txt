@@ -1,0 +1,10 @@
+x (A) Fix empty error message in LMStudioClient.Generate +apptracker @go
+x (A) Remove debug println from RustPDFExtractor +apptracker @go
+x (A) Fix overly permissive directory permissions in SaveYAML +apptracker @go
+x (A) Fix incorrect binary name in usage message +apptracker @go
+x (B) Make Rust binary path configurable via flag or env var +apptracker @go -- resolved: Makefile copies to bin/
+x (B) Make LM Studio base URL and model configurable via flags or env vars +apptracker @go -- deferred: LLM provider refactor coming
+x (C) Run go mod tidy and commit go.sum +apptracker @build -- invalid: no external deps
+x (C) Add Makefile with build-rust, build, and run targets +apptracker @build
+x (C) Add tests for textutils, profile, and ats packages +apptracker @test
+x (C) Align prompt instructions with StripMarkdownFence behavior +apptracker @go
