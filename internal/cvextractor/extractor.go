@@ -1,4 +1,4 @@
-package ats
+package cvextractor
 
 import (
 	"context"

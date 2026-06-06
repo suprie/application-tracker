@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"suprie/application_tracker/internal/ats"
+	"suprie/application_tracker/internal/cvextractor"
 	"suprie/application_tracker/internal/llm"
-	"suprie/application_tracker/internal/profile"
+	"suprie/application_tracker/internal/cvparser"
 	"suprie/application_tracker/internal/textutils"
 	"suprie/application_tracker/internal/utilities"
 )
@@ -18,7 +18,8 @@ func main() {
 		fmt.Println("Usage: ats <file.pdf>")
 		os.Exit(1)
 	}
-	extractor := ats.RustPDFExtractor{
+
+	extractor := cvextractor.RustPDFExtractor{
 		BinaryPath: "./bin/ats-reader",
 	}
 
@@ -34,7 +35,7 @@ func main() {
 
 	normalizeText := textutils.NormalizeText(result.Text)
 
-	prompt := profile.BuildCVParserPrompt(normalizeText)
+	prompt := cvparser.BuildCVParserPrompt(normalizeText)
 
 	lmClient := llm.LMStudioClient{
 		BaseURL: "http://localhost:1234",
