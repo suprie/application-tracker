@@ -20,12 +20,14 @@ type Message struct {
 }
 
 type ChatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
+	Model           string          `json:"model"`
+	Messages        []Message       `json:"messages"`
+	Temperature     float64         `json:"temperature"`
+	ResponseFormat  *ResponseFormat `json:"response_format,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort"`
 }
 
-func (c LMStudioClient) Generate(ctx context.Context, prompt string) (string, error) {
+func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFormat *ResponseFormat) (string, error) {
 	chatRequest := ChatRequest{
 		Model:       c.Model,
 		Temperature: 0.2,
@@ -35,6 +37,8 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string) (string, er
 				Content: prompt,
 			},
 		},
+		ResponseFormat:  responseFormat,
+		ReasoningEffort: "none",
 	}
 
 	payload, _ := json.Marshal(chatRequest)
@@ -75,7 +79,8 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string) (string, er
 		} `json:"choices"`
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+	if err := json.Unmarshal(bodyBytes, &response); err != nil {
+		fmt.Printf("response : %s", string(bodyBytes))
 		return "", err
 	}
 

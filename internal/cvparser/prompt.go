@@ -14,7 +14,7 @@ Rules:
 - Extract facts only.
 - Never invent information.
 - Use null when missing.
-- Output YAML. Markdown fences are acceptable — they will be stripped automatically.
+- Output YAML. Markdown fences are unacceptable
 
 Schema:
 name:
