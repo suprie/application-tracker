@@ -8,18 +8,18 @@ x (C) Run go mod tidy and commit go.sum +apptracker @build -- invalid: no extern
 x (C) Add Makefile with build-rust, build, and run targets +apptracker @build
 x (C) Add tests for textutils, profile, and ats packages +apptracker @test
 x (C) Align prompt instructions with StripMarkdownFence behavior +apptracker @go
-(A) Handle ignored json.Marshal error in LMStudioClient.Generate +apptracker @go due:2026-06-10
-(A) Move defer res.Body.Close before io.ReadAll to prevent body leak on error paths +apptracker @go due:2026-06-10
-(A) Sync LLMClient interface signature with LMStudioClient.Generate or remove orphaned interface +apptracker @go due:2026-06-10
-(A) Add missing location property definition in BuildJSONSchema properties map +apptracker @go due:2026-06-10
-(A) Handle SaveYAML error return in runParseCV instead of discarding it +apptracker @go due:2026-06-10
-(B) Fix usage message in main.go to show ats <command> <file> format +apptracker @go
-(B) Replace builtin println with fmt.Println and fmt.Printf in main.go +apptracker @go
-(B) Replace fmt.Println+panic with log.Fatalf in main.go error handling +apptracker @go
-(B) Extract regexp.MustCompile to package-level var in NormalizeText to avoid recompilation +apptracker @go
-(B) Add default case to command switch in main.go for unknown commands +apptracker @go
-(C) Remove debug fmt.Printf of raw LLM response body from LMStudioClient.Generate +apptracker @go
-(C) Rename responseformat parameter to responseFormat in LMStudioClient.Generate +apptracker @go
-(C) Rename TestRustPDFExtractor_Extract_Timeout to TestRustPDFExtractor_Extract_CancelledContext +apptracker @test
-(C) Extract duplicated LMStudioClient construction to helper or constructor +apptracker @go
-(C) Consider renaming utilities package to yamlutil or similar +apptracker @go
+x (A) Handle ignored json.Marshal error in LMStudioClient.Generate +apptracker @go due:2026-06-10
+x (A) Move defer res.Body.Close before io.ReadAll to prevent body leak on error paths +apptracker @go due:2026-06-10
+x (A) Sync LLMClient interface signature with LMStudioClient.Generate or remove orphaned interface +apptracker @go due:2026-06-10
+x (A) Add missing location property definition in BuildJSONSchema properties map +apptracker @go due:2026-06-10
+x (A) Handle SaveYAML error return in runParseCV instead of discarding it +apptracker @go due:2026-06-10
+x (B) Fix usage message in main.go to show ats <command> <file> format +apptracker @go
+x (B) Replace builtin println with fmt.Println and fmt.Printf in main.go +apptracker @go
+x (B) Replace fmt.Println+panic with log.Fatalf in main.go error handling +apptracker @go
+x (B) Extract regexp.MustCompile to package-level var in NormalizeText to avoid recompilation +apptracker @go
+x (B) Add default case to command switch in main.go for unknown commands +apptracker @go
+x (C) Remove debug fmt.Printf of raw LLM response body from LMStudioClient.Generate +apptracker @go
+x (C) Rename responseformat parameter to responseFormat in LMStudioClient.Generate +apptracker @go
+x (C) Rename TestRustPDFExtractor_Extract_Timeout to TestRustPDFExtractor_Extract_CancelledContext +apptracker @test
+x (C) Extract duplicated LMStudioClient construction to helper or constructor +apptracker @go
+x (C) Rename utilities package to fileutil +apptracker @go

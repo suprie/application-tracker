@@ -27,6 +27,13 @@ type ChatRequest struct {
 	ReasoningEffort string          `json:"reasoning_effort"`
 }
 
+func NewLMStudioClient() LMStudioClient {
+	return LMStudioClient{
+		BaseURL: "http://localhost:1234",
+		Model:   "gemma-4-12b-qat",
+	}
+}
+
 func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFormat *ResponseFormat) (string, error) {
 	chatRequest := ChatRequest{
 		Model:       c.Model,
@@ -41,7 +48,10 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFor
 		ReasoningEffort: "none",
 	}
 
-	payload, _ := json.Marshal(chatRequest)
+	payload, err := json.Marshal(chatRequest)
+	if err != nil {
+		return "", fmt.Errorf("marshal chat request: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -57,19 +67,18 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFor
 	res, err := http.DefaultClient.Do(req)
 
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("send request: %w", err)
 	}
 
+	defer res.Body.Close()
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("reading body: %w", err)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return "", fmt.Errorf("lm studio error (%d) %s", res.StatusCode, bodyBytes)
 	}
-
-	defer res.Body.Close()
 
 	var response struct {
 		Choices []struct {
@@ -80,8 +89,7 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFor
 	}
 
 	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		fmt.Printf("response : %s", string(bodyBytes))
-		return "", err
+		return "", fmt.Errorf("unmarshal response: %w,\nbody: %s", err, string(bodyBytes))
 	}
 
 	if len(response.Choices) == 0 {

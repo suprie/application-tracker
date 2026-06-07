@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"suprie/application_tracker/internal/cvextractor"
@@ -10,13 +11,13 @@ import (
 	"suprie/application_tracker/internal/jdextractor"
 	"suprie/application_tracker/internal/llm"
 	"suprie/application_tracker/internal/textutils"
-	"suprie/application_tracker/internal/utilities"
+	"suprie/application_tracker/internal/fileutil"
 )
 
 func main() {
 
 	if len(os.Args) < 3 {
-		fmt.Println("Usage: ats <file.pdf>")
+		fmt.Println("Usage: ats <parse-jd|parse-cv> <file.pdf>")
 		os.Exit(1)
 	}
 
@@ -28,6 +29,10 @@ func main() {
 		runParseCV(filename)
 	case "parse-jd":
 		runParseJD(filename)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", command)
+		fmt.Fprintf(os.Stderr, "Usage: ats <parse-cv|parse-jd> <file>\n")
+		os.Exit(1)
 	}
 
 }
@@ -36,8 +41,7 @@ func runParseJD(filepath string) {
 
 	bytes, err := os.ReadFile(filepath)
 	if err != nil {
-		fmt.Println(err)
-		panic(err)
+		log.Fatalf("read file %s : %v", filepath, err)
 	}
 
 	normalizeText := textutils.NormalizeText(string(bytes))
@@ -46,20 +50,15 @@ func runParseJD(filepath string) {
 		normalizeText,
 	)
 
-	println(prompt)
-	lmClient := llm.LMStudioClient{
-		BaseURL: "http://localhost:1234",
-		Model:   "gemma-4-12b-qat",
-	}
-
+	lmClient := llm.NewLMStudioClient()
 	schema := jdextractor.BuildJSONSchema()
 
 	response, err := lmClient.Generate(context.Background(), prompt, &schema)
 	if err != nil {
-		panic(err)
+		log.Fatalf("extracting JD %v", err)
 	}
 
-	println("Response : %s", response)
+	log.Printf("Response: %s", response)
 }
 
 func runParseCV(filename string) {
@@ -72,27 +71,25 @@ func runParseCV(filename string) {
 	result, err := extractor.Extract(context.Background(), filename)
 
 	if err != nil {
-		fmt.Println(err)
-		panic(err)
+		log.Fatalf("extracting CV %v", err)
 	}
 
 	normalizeText := textutils.NormalizeText(result.Text)
 
 	prompt := cvparser.BuildCVParserPrompt(normalizeText)
 
-	lmClient := llm.LMStudioClient{
-		BaseURL: "http://localhost:1234",
-		Model:   "gemma-3n-e4b",
-	}
+	lmClient := llm.NewLMStudioClient()
 
 	response, err := lmClient.Generate(context.Background(), prompt, nil)
 	if err != nil {
-		panic(err)
+		log.Fatalf("generating response %v", err)
 	}
 
-	utilities.SaveYAML(
+	if err = fileutil.SaveYAML(
 		"generated/master_profile.yaml",
-		utilities.StripMarkdownFence(response),
-	)
+		fileutil.StripMarkdownFence(response),
+	); err != nil {
+		log.Fatalf("saving yaml file %v", err)
+	}
 
 }

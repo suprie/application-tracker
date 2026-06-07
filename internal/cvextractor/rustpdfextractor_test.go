@@ -55,9 +55,8 @@ func TestRustPDFExtractor_Extract_BinaryNotFound(t *testing.T) {
 	}
 }
 
-func TestRustPDFExtractor_Extract_Timeout(t *testing.T) {
-	// A script that sleeps forever to trigger the 30s timeout
-	// We use a shorter test by checking that context cancellation propagates
+func TestRustPDFExtractor_Extract_CancelledContext(t *testing.T) {
+	// Verify the extractor respects context cancellation
 	extractor := RustPDFExtractor{BinaryPath: "/nonexistent/path/to/binary"}
 
 	ctx, cancel := context.WithCancel(context.Background())
