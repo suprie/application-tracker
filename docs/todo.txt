@@ -23,3 +23,5 @@ x (C) Rename responseformat parameter to responseFormat in LMStudioClient.Genera
 x (C) Rename TestRustPDFExtractor_Extract_Timeout to TestRustPDFExtractor_Extract_CancelledContext +apptracker @test
 x (C) Extract duplicated LMStudioClient construction to helper or constructor +apptracker @go
 x (C) Rename utilities package to fileutil +apptracker @go
+(A) 2026-06-07 add sqlite support to save the parsed JD to database
+(A) 2026-06-07 add repository pattern to job description
