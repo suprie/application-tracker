@@ -28,7 +28,7 @@ func RunParseCV(filename string) {
 
 	prompt := cvparser.BuildCVParserPrompt(normalizeText)
 
-	lmClient := llm.NewLMStudioClient()
+	lmClient := llm.NewLMStudioClient("parse_cv")
 
 	response, err := lmClient.Generate(context.Background(), prompt, nil)
 	if err != nil {

@@ -23,5 +23,10 @@ x (C) Rename responseformat parameter to responseFormat in LMStudioClient.Genera
 x (C) Rename TestRustPDFExtractor_Extract_Timeout to TestRustPDFExtractor_Extract_CancelledContext +apptracker @test
 x (C) Extract duplicated LMStudioClient construction to helper or constructor +apptracker @go
 x (C) Rename utilities package to fileutil +apptracker @go
-(A) 2026-06-07 add sqlite support to save the parsed JD to database
-(A) 2026-06-07 add repository pattern to job description
+x (A) 2026-06-07 add sqlite support to save the parsed JD to database -- resolved: sqliterepo.Open + migration.Run + RunParseJD with optional dbpath
+x (A) 2026-06-07 add repository pattern to job description -- resolved: interface in internal/repository, impl in internal/repository/sqlite
+x (A) Fix ignored json.Marshal errors in mapToJobDescription +apptracker @go -- resolved: added error return, mapped all DTO fields
+x (A) Add SQL migration runner with embed +apptracker @go -- resolved: internal/migration package with golang-migrate driver
+x (A) Create SQLite repository implementing JobDescriptionRepository interface +apptracker @go -- resolved: internal/repository/sqlite with full CRUD + tests
+x (A) Wire repository into parse-jd service with optional dbpath arg +apptracker @go -- resolved: RunParseJD accepts nil repo for print-only mode
+x (B) Add migrate subcommand to CLI +apptracker @go

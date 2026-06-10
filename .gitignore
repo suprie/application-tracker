@@ -2,3 +2,11 @@ generated/*
 rust/target/*
 bin/*
 main
+.env
+data.db
+.DS_Store
+*.aux
+*.log
+*.out
+*.pdf
+*.tex

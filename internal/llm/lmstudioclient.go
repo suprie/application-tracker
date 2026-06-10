@@ -1,99 +1,107 @@
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 )
 
 type LMStudioClient struct {
-	BaseURL string
-	Model   string
+	BaseURL  string
+	Model    string
+	APIKey   *string
+	Provider Provider
 }
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
+// NewLMStudioClient creates a client configured from environment variables.
+// Pass a stage name (e.g. "parse_jd", "match") to use stage-specific overrides:
+//
+//	AI_PROVIDER_{STAGE} → AI_PROVIDER → "openai"
+//	AI_MODEL_{STAGE}    → AI_MODEL    → built-in default
+//	AI_URL_{STAGE}      → AI_URL      → built-in default
+//	AI_API_KEY_{STAGE}  → AI_API_KEY  → empty (no auth header sent)
+func NewLMStudioClient(stage ...string) LMStudioClient {
+	stageName := ""
+	if len(stage) > 0 {
+		stageName = stage[0]
+	}
 
-type ChatRequest struct {
-	Model           string          `json:"model"`
-	Messages        []Message       `json:"messages"`
-	Temperature     float64         `json:"temperature"`
-	ResponseFormat  *ResponseFormat `json:"response_format,omitempty"`
-	ReasoningEffort string          `json:"reasoning_effort"`
-}
+	providerName := resolveStage("AI_PROVIDER", stageName, "openai")
+	provider, err := GetProvider(providerName)
+	if err != nil {
+		// Fall back to OpenAI if the configured provider is unknown.
+		provider, _ = GetProvider("openai")
+	}
 
-func NewLMStudioClient() LMStudioClient {
 	return LMStudioClient{
-		BaseURL: "http://localhost:1234",
-		Model:   "gemma-4-12b-qat",
+		BaseURL:  resolveStage("AI_URL", stageName, "http://localhost:1234/v1"),
+		Model:    resolveStage("AI_MODEL", stageName, "gemma-4-12b-qat"),
+		APIKey:   resolveStageAPIKey("AI_API_KEY", stageName),
+		Provider: provider,
 	}
 }
 
+// Generate sends a prompt to the LLM and returns the generated text.
 func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFormat *ResponseFormat) (string, error) {
-	chatRequest := ChatRequest{
-		Model:       c.Model,
-		Temperature: 0.2,
-		Messages: []Message{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		ResponseFormat:  responseFormat,
-		ReasoningEffort: "none",
-	}
-
-	payload, err := json.Marshal(chatRequest)
+	req, err := c.Provider.NewRequest(ctx, c.BaseURL, c.Model, prompt, responseFormat, c.APIKey)
 	if err != nil {
-		return "", fmt.Errorf("marshal chat request: %w", err)
+		return "", fmt.Errorf("building request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.BaseURL+"/v1/chat/completions",
-		bytes.NewReader(payload),
-	)
-
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
-
+	res, err := httpClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("send request: %w", err)
 	}
-
 	defer res.Body.Close()
+
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", fmt.Errorf("reading body: %w", err)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", fmt.Errorf("lm studio error (%d) %s", res.StatusCode, bodyBytes)
+		return "", fmt.Errorf("llm error (%d): %s", res.StatusCode, string(bodyBytes))
 	}
 
-	var response struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+	content, err := c.Provider.ParseResponse(bodyBytes)
+	if err != nil {
+		return "", fmt.Errorf("parsing response: %w", err)
 	}
-
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
-		return "", fmt.Errorf("unmarshal response: %w,\nbody: %s", err, string(bodyBytes))
-	}
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("empty LLM response")
-	}
-	return response.Choices[0].Message.Content, nil
+	return content, nil
 }
+
+// --- env helpers ---
+
+func resolveStage(baseKey, stage, fallback string) string {
+	if stage != "" {
+		if v := os.Getenv(baseKey + "_" + strings.ToUpper(stage)); v != "" {
+			return v
+		}
+	}
+	return envOrDefault(baseKey, fallback)
+}
+
+func resolveStageAPIKey(baseKey, stage string) *string {
+	if stage != "" {
+		if v := os.Getenv(baseKey + "_" + strings.ToUpper(stage)); v != "" {
+			return &v
+		}
+	}
+	if v := os.Getenv(baseKey); v != "" {
+		return &v
+	}
+	return nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// httpClient is a test-replaceable HTTP client.
+var httpClient = func() *http.Client { return http.DefaultClient } //nolint:gochecknoglobals
