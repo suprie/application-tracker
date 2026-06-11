@@ -7,18 +7,20 @@ import (
 
 // TemplateData holds all variables for the LaTeX template.
 type TemplateData struct {
-	YourName       string
-	YourAddress    string
-	YourEmail      string
-	YourPhone      string
-	RecipientName  string
-	RecipientTitle string
-	CompanyName    string
-	CompanyAddress string
-	Subject        string
-	Opening        string // salutation only, e.g. "Dear Hiring Manager,"
-	BodyParagraphs []string
-	Closing        string // closing phrase only, e.g. "Sincerely,"
+	YourName          string
+	YourAddress       string
+	YourEmail         string
+	YourPhone         string
+	RecipientName     string
+	RecipientTitle    string
+	CompanyName       string
+	CompanyAddress    string
+	Subject           string
+	Opening           string   // salutation only, e.g. "Dear Hiring Manager,"
+	OpeningParagraphs string   // single intro paragraph
+	BodyParagraphs    []string // 2-3 body paragraphs
+	ClosingParagraphs string   // single closing paragraph
+	Closing           string   // closing phrase only, e.g. "Sincerely,"
 }
 
 // senderAddress builds the \\-separated address block for \address{}.
@@ -75,8 +77,14 @@ const latexTemplate = `\documentclass[11pt,a4paper]{letter}
 
 \opening{ {{.Opening}} }
 
+{{if .OpeningParagraphs}}{{.OpeningParagraphs}}
+
+{{end}}
 {{range .BodyParagraphs}}
 {{.}}
+
+{{end}}
+{{if .ClosingParagraphs}}{{.ClosingParagraphs}}
 
 {{end}}
 \closing{ {{.Closing}} }

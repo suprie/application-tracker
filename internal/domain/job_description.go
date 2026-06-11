@@ -29,6 +29,7 @@ type JobDescription struct {
 	ApplyURL             *string
 	FitScore             *int
 	FitSummary           *string
+	RankerResultJSON     *string
 	AppliedAt            *time.Time
 	CreatedAt            time.Time
 }

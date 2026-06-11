@@ -6,14 +6,19 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"suprie/application_tracker/internal/domain"
 	"suprie/application_tracker/internal/llm"
 	"suprie/application_tracker/internal/matcher"
+	"suprie/application_tracker/internal/rag"
 	"suprie/application_tracker/internal/repository"
 )
 
 // RunMatch performs an AI-powered semantic fit match between the master profile
-// and the job description identified by jdID. Results are persisted via repo.
+// and the job description identified by jdID. If chunked profile data is available
+// and fresh, only the chunks most relevant to the JD (via BM25) are used in the
+// prompt. Otherwise, falls back to the full master profile.
 func RunMatch(masterProfilePath string, jdID int, repo repository.JobDescriptionRepository) {
 	jd, err := repo.GetByID(context.Background(), jdID)
 	if err != nil {
@@ -25,7 +30,8 @@ func RunMatch(masterProfilePath string, jdID int, repo repository.JobDescription
 		log.Fatalf("reading master profile %s: %v", masterProfilePath, err)
 	}
 
-	prompt := matcher.BuildMatchPrompt(string(profileBytes), jd)
+	profileStr := string(profileBytes)
+	prompt := buildMatchPrompt(masterProfilePath, profileStr, jd)
 	schema := matcher.BuildMatchJSONSchema()
 
 	lmClient := llm.NewLMStudioClient("match")
@@ -68,4 +74,38 @@ func RunMatch(masterProfilePath string, jdID int, repo repository.JobDescription
 	}
 
 	fmt.Printf("\nSummary: %s\n", match.Summary)
+}
+
+// buildMatchPrompt attempts BM25-based prompt construction. Falls back to the
+// full-profile prompt when chunk data is unavailable, stale, or retrieval fails.
+func buildMatchPrompt(profilePath, fullProfile string, jd *domain.JobDescription) string {
+	store := rag.NewChunkStore()
+	if err := store.Load(rag.ChunksFileName); err != nil {
+		return matcher.BuildMatchPrompt(fullProfile, jd)
+	}
+	if store.IsStale(profilePath) || store.Len() == 0 {
+		return matcher.BuildMatchPrompt(fullProfile, jd)
+	}
+
+	query := buildMatchQuery(jd)
+	chunks, err := rag.Retrieve(query, store, 5)
+	if err != nil || len(chunks) == 0 {
+		return matcher.BuildMatchPrompt(fullProfile, jd)
+	}
+
+	fmt.Printf("🔍 Using %d retrieved profile chunks for matching\n", len(chunks))
+	return matcher.BuildMatchPromptWithChunks(chunks, jd)
+}
+
+// buildMatchQuery constructs a retrieval query from the JD fields most
+// useful for finding relevant profile experience.
+func buildMatchQuery(jd *domain.JobDescription) string {
+	var parts []string
+	if jd.RoleTitle != nil {
+		parts = append(parts, *jd.RoleTitle)
+	}
+	parts = append(parts, jd.RequirementsJSON)
+	parts = append(parts, jd.ResponsibilitiesJSON)
+	parts = append(parts, jd.KeywordsJSON)
+	return strings.Join(parts, " ")
 }

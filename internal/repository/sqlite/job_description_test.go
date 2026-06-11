@@ -258,6 +258,36 @@ func TestJobDescriptionRepository_UpdateFitScore(t *testing.T) {
 	}
 }
 
+func TestJobDescriptionRepository_UpdateRankerResult(t *testing.T) {
+	repo := openTestDB(t)
+	ctx := context.Background()
+
+	jd := &domain.JobDescription{
+		Company:              ptr("Ranker Co"),
+		RequirementsJSON:     "{}",
+		ResponsibilitiesJSON: "[]",
+		KeywordsJSON:         "[]",
+		ParsingWarningJSON:   "[]",
+		CreatedAt:            time.Now(),
+	}
+	if err := repo.Create(ctx, jd); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	rankerJSON := `{"selected_experiences":[{"experience_id":"exp-0","title":"Test","final_score":4.2}]}`
+	if err := repo.UpdateRankerResult(ctx, jd.ID, rankerJSON); err != nil {
+		t.Fatalf("update ranker result: %v", err)
+	}
+
+	got, _ := repo.GetByID(ctx, jd.ID)
+	if got.RankerResultJSON == nil {
+		t.Fatal("expected RankerResultJSON to be set")
+	}
+	if *got.RankerResultJSON != rankerJSON {
+		t.Errorf("RankerResultJSON mismatch\nwant: %s\ngot:  %s", rankerJSON, *got.RankerResultJSON)
+	}
+}
+
 func TestJobDescriptionRepository_NullableFields(t *testing.T) {
 	repo := openTestDB(t)
 	ctx := context.Background()

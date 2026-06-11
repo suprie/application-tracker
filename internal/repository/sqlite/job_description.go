@@ -24,12 +24,14 @@ func NewJobDescriptionRepository(db *sql.DB) *JobDescriptionRepository {
 const selectColumns = `id, company, role_title, seniority, employment_type,
 	work_arrangement, location, requirements_json,
 	responsibilities_json, keywords_json, parsing_warning_json,
-	apply_url, status, fit_score, fit_summary, applied_at, created_at`
+	apply_url, status, fit_score, fit_summary, ranker_result_json,
+	applied_at, created_at`
 
 const insertColumns = `company, role_title, seniority, employment_type,
 	work_arrangement, location, requirements_json,
 	responsibilities_json, keywords_json, parsing_warning_json,
-	apply_url, status, fit_score, fit_summary, applied_at, created_at`
+	apply_url, status, fit_score, fit_summary, ranker_result_json,
+	applied_at, created_at`
 
 // --- Read ---
 
@@ -53,7 +55,7 @@ func (r *JobDescriptionRepository) Create(ctx context.Context, jd *domain.JobDes
 
 	result, err := r.db.ExecContext(ctx,
 		"INSERT INTO job_descriptions ("+insertColumns+") VALUES ("+
-			"?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			"?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		jd.Company,
 		jd.RoleTitle,
 		jd.Seniority,
@@ -68,6 +70,7 @@ func (r *JobDescriptionRepository) Create(ctx context.Context, jd *domain.JobDes
 		jd.Status,
 		jd.FitScore,
 		jd.FitSummary,
+		jd.RankerResultJSON,
 		jd.AppliedAt,
 		jd.CreatedAt,
 	)
@@ -156,6 +159,17 @@ func (r *JobDescriptionRepository) UpdateFitScore(ctx context.Context, id int, s
 	return nil
 }
 
+func (r *JobDescriptionRepository) UpdateRankerResult(ctx context.Context, id int, rankerJSON string) error {
+	_, err := r.db.ExecContext(ctx,
+		"UPDATE job_descriptions SET ranker_result_json = ? WHERE id = ?",
+		rankerJSON, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update ranker_result id=%d: %w", id, err)
+	}
+	return nil
+}
+
 // --- scan ---
 
 // scanner abstracts *sql.Row and *sql.Rows for a shared scan function.
@@ -181,6 +195,7 @@ func scanJobDescription(s scanner) (*domain.JobDescription, error) {
 		&jd.Status,
 		&jd.FitScore,
 		&jd.FitSummary,
+		&jd.RankerResultJSON,
 		&jd.AppliedAt,
 		&jd.CreatedAt,
 	)

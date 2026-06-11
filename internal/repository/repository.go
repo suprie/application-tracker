@@ -16,4 +16,6 @@ type JobDescriptionRepository interface {
 	UpdateStatus(ctx context.Context, id int, status string) error
 	// UpdateFitScore sets the fit score and summary.
 	UpdateFitScore(ctx context.Context, id int, score int, summary string) error
+	// UpdateRankerResult stores the experience ranker JSON output for this JD.
+	UpdateRankerResult(ctx context.Context, id int, rankerJSON string) error
 }

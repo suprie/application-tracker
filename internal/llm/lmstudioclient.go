@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type LMStudioClient struct {
@@ -14,6 +16,8 @@ type LMStudioClient struct {
 	Model    string
 	APIKey   *string
 	Provider Provider
+	Stage    string      // human-readable label for request logs (e.g. "match", "parse_cv")
+	client   *http.Client // per-stage client — avoids Ollama cancelling the first request when a second starts
 }
 
 // NewLMStudioClient creates a client configured from environment variables.
@@ -41,6 +45,12 @@ func NewLMStudioClient(stage ...string) LMStudioClient {
 		Model:    resolveStage("AI_MODEL", stageName, "gemma-4-12b-qat"),
 		APIKey:   resolveStageAPIKey("AI_API_KEY", stageName),
 		Provider: provider,
+		Stage:    stageName,
+		client: &http.Client{
+			Transport: &http.Transport{
+				DisableKeepAlives: true, // fresh connection per request, avoids Ollama queue clash
+			},
+		},
 	}
 }
 
@@ -51,16 +61,31 @@ func (c LMStudioClient) Generate(ctx context.Context, prompt string, responseFor
 		return "", fmt.Errorf("building request: %w", err)
 	}
 
-	res, err := httpClient().Do(req)
+	log.Printf("→ LLM request [%s] %s %s model=%s prompt=%dchars",
+		c.Stage, req.Method, req.URL.String(), c.Model, len(prompt))
+
+	start := time.Now()
+	hc := c.client
+	if hc == nil {
+		hc = httpClient()
+	}
+	res, err := hc.Do(req)
+	elapsed := time.Since(start)
+
 	if err != nil {
+		log.Printf("✗ LLM error [%s] after %s: %v", c.Stage, elapsed.Round(time.Millisecond), err)
 		return "", fmt.Errorf("send request: %w", err)
 	}
 	defer res.Body.Close()
 
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
+		log.Printf("✗ LLM read error [%s]: %v", c.Stage, err)
 		return "", fmt.Errorf("reading body: %w", err)
 	}
+
+	log.Printf("← LLM response [%s] %d %s %dchars",
+		c.Stage, res.StatusCode, elapsed.Round(time.Millisecond), len(bodyBytes))
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return "", fmt.Errorf("llm error (%d): %s", res.StatusCode, string(bodyBytes))

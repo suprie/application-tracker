@@ -21,10 +21,12 @@ func BuildJSONSchema() llm.ResponseFormat {
 					"company_address": map[string]any{"type": "string"},
 					"subject":         map[string]any{"type": "string"},
 					"opening":         map[string]any{"type": "string"},
+					"opening_paragraphs":         map[string]any{"type": "string"},
 					"body_paragraphs": map[string]any{
 						"type":  "array",
 						"items": map[string]any{"type": "string"},
 					},
+					"closing_paragraphs": map[string]any{"type": "string"},
 					"closing": map[string]any{"type": "string"},
 				},
 				"required": []string{
