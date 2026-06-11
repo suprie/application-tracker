@@ -8,13 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"suprie/application_tracker/internal/coverletter"
 	"suprie/application_tracker/internal/domain"
 	"suprie/application_tracker/internal/llm"
-	"suprie/application_tracker/internal/rag"
 	"suprie/application_tracker/internal/ranker"
 	"suprie/application_tracker/internal/repository"
 )
@@ -22,11 +19,8 @@ import (
 // RunCoverLetter generates a tailored LaTeX cover letter for the given JD,
 // compiles it to PDF, and keeps both files.
 //
-// When chunked profile data is available and fresh, a two-stage pipeline runs:
-//  1. Experience Ranker — re-ranks BM25 chunks by strategic fit
-//  2. Cover Letter Writer — uses the ranker's curated selections
-//
-// Otherwise, falls back to the full-profile prompt in a single LLM call.
+// If a cached ranker result exists for this JD (from `ats rank <id>`), it is
+// used to build a focused prompt. Otherwise, falls back to the full profile.
 func RunCoverLetter(jdID int, masterProfilePath string, repo repository.JobDescriptionRepository) {
 	jd, err := repo.GetByID(context.Background(), jdID)
 	if err != nil {
@@ -39,19 +33,7 @@ func RunCoverLetter(jdID int, masterProfilePath string, repo repository.JobDescr
 	}
 
 	profileStr := string(profileBytes)
-
-	// Build prompt — with ranker if RAG chunks are available.
-	prompt, rr := buildCoverLetterPromptWithRanker(masterProfilePath, profileStr, jd)
-
-	// Persist ranker result for reuse.
-	if rr != nil && rr.JSON != "" {
-		if err := repo.UpdateRankerResult(context.Background(), jdID, rr.JSON); err != nil {
-			fmt.Printf("⚠️  Failed to persist ranker result: %v\n", err)
-		}
-		// Give Ollama time to release GPU memory before the next request.
-		fmt.Println("⏳ Waiting for Ollama to release resources (5s)...")
-		time.Sleep(5 * time.Second)
-	}
+	prompt := buildCoverLetterPrompt(profileStr, jd)
 
 	schema := coverletter.BuildJSONSchema()
 
@@ -126,69 +108,21 @@ func RunCoverLetter(jdID int, masterProfilePath string, repo repository.JobDescr
 	fmt.Println("\nCover letter generated successfully.")
 }
 
-// rankerResult holds the output of the experience ranker for persistence.
-type rankerResult struct {
-	Prompt string          // cover letter prompt built from ranked output
-	JSON   string          // raw ranker JSON for storage
-	Ranked *ranker.Response // parsed ranker response
-}
-
-// buildCoverLetterPromptWithRanker attempts the two-stage RAG pipeline:
-// BM25 retrieval → Experience Ranker → cover letter prompt from ranked output.
-// Falls back to the full-profile prompt when RAG is unavailable or fails.
-func buildCoverLetterPromptWithRanker(profilePath, fullProfile string, jd *domain.JobDescription) (string, *rankerResult) {
-	store := rag.NewChunkStore()
-	if err := store.Load(rag.ChunksFileName); err != nil {
-		return coverletter.BuildCoverLetterPrompt(fullProfile, jd), nil
-	}
-	if store.IsStale(profilePath) || store.Len() == 0 {
-		return coverletter.BuildCoverLetterPrompt(fullProfile, jd), nil
+// buildCoverLetterPrompt uses a cached ranker result if available, otherwise
+// falls back to the full-profile prompt.
+func buildCoverLetterPrompt(fullProfile string, jd *domain.JobDescription) string {
+	// Use cached ranker result if available.
+	if jd.RankerResultJSON != nil && *jd.RankerResultJSON != "" {
+		var ranked ranker.Response
+		if err := json.Unmarshal([]byte(*jd.RankerResultJSON), &ranked); err == nil &&
+			len(ranked.SelectedExperiences) > 0 {
+			fmt.Printf("✅ Using cached ranker result (%d experiences, %d skills)\n",
+				len(ranked.SelectedExperiences), len(ranked.SelectedSkills))
+			return coverletter.BuildCoverLetterPromptWithRanked(&ranked, jd)
+		}
 	}
 
-	query := buildCoverLetterQuery(jd)
-	chunks, err := rag.Retrieve(query, store, 8) // retrieve more for the ranker to choose from
-	if err != nil || len(chunks) == 0 {
-		return coverletter.BuildCoverLetterPrompt(fullProfile, jd), nil
-	}
-
-	fmt.Printf("🔍 BM25 retrieved %d chunks — running experience ranker\n", len(chunks))
-
-	// Stage 1: Experience Ranker.
-	summary := ranker.ProfileSummary(store.Chunks())
-	rankerPrompt := ranker.BuildPrompt(summary, chunks, jd)
-	rankerSchema := ranker.BuildJSONSchema()
-
-	rankerClient := llm.NewLMStudioClient("ranker")
-	rankerResp, err := rankerClient.Generate(context.Background(), rankerPrompt, &rankerSchema)
-	if err != nil {
-		fmt.Printf("⚠️  Ranker failed: %v — falling back to full profile\n", err)
-		return coverletter.BuildCoverLetterPrompt(fullProfile, jd), nil
-	}
-
-	var ranked ranker.Response
-	if err := json.Unmarshal([]byte(rankerResp), &ranked); err != nil {
-		fmt.Printf("⚠️  Ranker response parse failed: %v — falling back to full profile\n", err)
-		return coverletter.BuildCoverLetterPrompt(fullProfile, jd), nil
-	}
-
-	fmt.Printf("✅ Ranker selected %d experiences, %d skills\n",
-		len(ranked.SelectedExperiences), len(ranked.SelectedSkills))
-
-	// Stage 2: Build cover letter prompt from ranked output.
-	return coverletter.BuildCoverLetterPromptWithRanked(&ranked, jd), &rankerResult{
-		Prompt: "", // caller uses the returned prompt string
-		JSON:   rankerResp,
-		Ranked: &ranked,
-	}
-}
-
-// buildCoverLetterQuery constructs a retrieval query from JD fields.
-func buildCoverLetterQuery(jd *domain.JobDescription) string {
-	var parts []string
-	if jd.RoleTitle != nil {
-		parts = append(parts, *jd.RoleTitle)
-	}
-	parts = append(parts, jd.RequirementsJSON)
-	parts = append(parts, jd.ResponsibilitiesJSON)
-	return strings.Join(parts, " ")
+	// Fall back to full profile.
+	fmt.Println("⚠️  No cached ranker result — using full profile (run 'ats rank' first for better results)")
+	return coverletter.BuildCoverLetterPrompt(fullProfile, jd)
 }

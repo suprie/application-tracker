@@ -13,28 +13,34 @@ func init() {
 }
 
 // OllamaProvider implements the Ollama OpenAI-compatible API. Ollama does not
-// support json_schema structured output — it only understands json_object mode.
-// The JSON schema is inlined into the prompt so the model still knows the
-// expected output shape.
+// support structured output (neither json_schema nor json_object). The JSON
+// schema is inlined into the prompt text so the model still knows the expected
+// output shape. No response_format field is sent — many Ollama models reject it.
 type OllamaProvider struct{}
 
 func (OllamaProvider) NewRequest(ctx context.Context, baseURL, model, prompt string, rf *ResponseFormat, apiKey *string) (*http.Request, error) {
+	msg := prompt
+
+	// Inline the schema into the prompt so the model produces valid JSON.
+	if rf != nil {
+		if schemaJSON, err := json.Marshal(rf.JSONSchema.Schema); err == nil {
+			msg += "\n\nYou MUST respond with ONLY a JSON object. Do not wrap it in markdown fences.\n" +
+				"CRITICAL: The schema below DESCRIBES the shape. You must produce an INSTANCE of it.\n" +
+				"Do NOT output the schema itself. Do NOT include the word \"properties\" as a key.\n" +
+				"For example, if the schema says {\"properties\":{\"name\":{\"type\":\"string\"}}},\n" +
+				"you should output {\"name\":\"Alice\"}, NOT {\"properties\":{\"name\":\"Alice\"}}.\n\n" +
+				"Schema:\n" + string(schemaJSON)
+		}
+	}
+
 	body := ollamaRequest{
 		Model:       model,
 		Temperature: 0.2,
 		Stream:      false,
 		Messages: []message{
-			{Role: "user", Content: prompt},
+			{Role: "user", Content: msg},
 		},
-	}
-
-	// Ollama supports json_object mode but not json_schema. Inline the
-	// schema into the prompt so the model produces valid structured output.
-	if rf != nil {
-		body.ResponseFormat = &jsonObjectFormat{Type: "json_object"}
-		if schemaJSON, err := json.Marshal(rf.JSONSchema.Schema); err == nil {
-			body.Messages[0].Content += "\n\nYou MUST respond with ONLY a JSON object. Do not wrap it in markdown fences.\nThe JSON object must match this schema:\n" + string(schemaJSON)
-		}
+		Reasoning: "none",
 	}
 
 	payload, err := json.Marshal(body)
@@ -58,9 +64,9 @@ func (OllamaProvider) ParseResponse(body []byte) (string, error) {
 }
 
 type ollamaRequest struct {
-	Model          string            `json:"model"`
-	Messages       []message         `json:"messages"`
-	Temperature    float64           `json:"temperature"`
-	Stream         bool              `json:"stream"`
-	ResponseFormat *jsonObjectFormat `json:"response_format,omitempty"`
+	Model       string    `json:"model"`
+	Messages    []message `json:"messages"`
+	Temperature float64   `json:"temperature"`
+	Stream      bool      `json:"stream"`
+	Reasoning   string    `json:"reasoning_effort"`
 }

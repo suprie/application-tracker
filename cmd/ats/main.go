@@ -64,7 +64,22 @@ func main() {
 		defer db.Close()
 		service.RunMatch(profilePath, id, repo)
 
-	case "cover-letter":
+	case "rank":
+			// ats rank <id> [master_profile]
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "Usage: ats rank <id> [master_profile]")
+				os.Exit(1)
+			}
+			id := parseID(os.Args[2])
+			profilePath := "generated/master_profile.yaml"
+			if len(os.Args) >= 4 {
+				profilePath = os.Args[3]
+			}
+			db, repo := openRepo()
+			defer db.Close()
+			service.RunRank(id, profilePath, repo)
+
+		case "cover-letter":
 		// ats cover-letter <id> [master_profile]
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "Usage: ats cover-letter <id> [master_profile]")
@@ -170,6 +185,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  ats parse-cv <file.pdf>")
 	fmt.Fprintln(os.Stderr, "  ats parse-jd <file.pdf> [url]")
 	fmt.Fprintln(os.Stderr, "  ats match <id> [master_profile]")
+	fmt.Fprintln(os.Stderr, "  ats rank <id> [master_profile]")
 	fmt.Fprintln(os.Stderr, "  ats cover-letter <id> [master_profile]")
 	fmt.Fprintln(os.Stderr, "  ats apply <id>")
 	fmt.Fprintln(os.Stderr, "  ats list [status]")

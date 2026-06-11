@@ -5,6 +5,25 @@ import (
 	"text/template"
 )
 
+// latexSpecialChars are characters that must be escaped in LaTeX text.
+var latexSpecialChars = strings.NewReplacer(
+	`\`, `\textbackslash{}`,
+	`{`, `\{`,
+	`}`, `\}`,
+	`$`, `\$`,
+	`&`, `\&`,
+	`#`, `\#`,
+	`_`, `\_`,
+	`%`, `\%`,
+	`~`, `\textasciitilde{}`,
+	`^`, `\textasciicircum{}`,
+)
+
+// escapeLaTeX escapes special characters for use in LaTeX body text.
+func escapeLaTeX(s string) string {
+	return latexSpecialChars.Replace(s)
+}
+
 // TemplateData holds all variables for the LaTeX template.
 type TemplateData struct {
 	YourName          string
@@ -38,17 +57,48 @@ func (d TemplateData) senderAddress() string {
 	return strings.Join(parts, " \\\\ ")
 }
 
+// hasAddress returns true if any address field is populated.
+func (d TemplateData) hasAddress() bool {
+	return d.YourAddress != "" || d.YourEmail != "" || d.YourPhone != ""
+}
+
 // recipientBlock builds the recipient info for \begin{letter}{...}.
 func (d TemplateData) recipientBlock() string {
-	parts := []string{d.RecipientName}
+	var parts []string
+	if d.RecipientName != "" {
+		parts = append(parts, d.RecipientName)
+	}
 	if d.RecipientTitle != "" {
 		parts = append(parts, d.RecipientTitle)
 	}
-	parts = append(parts, `\textbf{`+d.CompanyName+`}`)
+	if d.CompanyName != "" {
+		parts = append(parts, `\textbf{`+d.CompanyName+`}`)
+	}
 	if d.CompanyAddress != "" {
 		parts = append(parts, d.CompanyAddress)
 	}
+	if len(parts) == 0 {
+		return "Hiring Manager"
+	}
 	return strings.Join(parts, " \\\\ ")
+}
+
+// safeOpening returns Opening or a fallback.
+func (d TemplateData) safeOpening() string {
+	s := strings.TrimSpace(d.Opening)
+	if s == "" {
+		return "Dear Hiring Manager,"
+	}
+	return s
+}
+
+// safeClosing returns Closing or a fallback.
+func (d TemplateData) safeClosing() string {
+	s := strings.TrimSpace(d.Closing)
+	if s == "" {
+		return "Sincerely,"
+	}
+	return s
 }
 
 const latexTemplate = `\documentclass[11pt,a4paper]{letter}
@@ -57,7 +107,7 @@ const latexTemplate = `\documentclass[11pt,a4paper]{letter}
 \usepackage{parskip}
 \usepackage{lmodern}
 
-\signature{\hspace*{-\parindent}{{.YourName}}}
+{{if .YourName}}\signature{\hspace*{-\parindent}{{.YourName}}}{{end}}
 \address{ {{senderAddress}} }
 \date{\today}
 
@@ -70,24 +120,24 @@ const latexTemplate = `\documentclass[11pt,a4paper]{letter}
 
 {{if .Subject}}
 \begin{center}
-\textbf{Re: {{.Subject}}}
+\textbf{Re: {{.Subject | escapeLaTeX}}}
 \end{center}
 \vspace{0.5em}
 {{end}}
 
-\opening{ {{.Opening}} }
+\opening{ {{safeOpening}} }
 
-{{if .OpeningParagraphs}}{{.OpeningParagraphs}}
+{{if .OpeningParagraphs}}{{.OpeningParagraphs | escapeLaTeX}}
 
 {{end}}
 {{range .BodyParagraphs}}
-{{.}}
+{{. | escapeLaTeX}}
 
 {{end}}
-{{if .ClosingParagraphs}}{{.ClosingParagraphs}}
+{{if .ClosingParagraphs}}{{.ClosingParagraphs | escapeLaTeX}}
 
 {{end}}
-\closing{ {{.Closing}} }
+\closing{ {{safeClosing}} }
 
 \end{letter}
 \end{document}
@@ -98,6 +148,10 @@ func RenderLaTeX(data TemplateData) (string, error) {
 	tmpl, err := template.New("coverletter").Funcs(template.FuncMap{
 		"senderAddress":  data.senderAddress,
 		"recipientBlock": data.recipientBlock,
+		"hasAddress":     data.hasAddress,
+		"safeOpening":    data.safeOpening,
+		"safeClosing":    data.safeClosing,
+		"escapeLaTeX":    escapeLaTeX,
 	}).Parse(latexTemplate)
 	if err != nil {
 		return "", err
