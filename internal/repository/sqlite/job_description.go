@@ -170,6 +170,17 @@ func (r *JobDescriptionRepository) UpdateRankerResult(ctx context.Context, id in
 	return nil
 }
 
+func (r *JobDescriptionRepository) UpdateApplyURL(ctx context.Context, id int, applyURL *string) error {
+	_, err := r.db.ExecContext(ctx,
+		"UPDATE job_descriptions SET apply_url = ? WHERE id = ?",
+		applyURL, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update apply_url id=%d: %w", id, err)
+	}
+	return nil
+}
+
 // --- scan ---
 
 // scanner abstracts *sql.Row and *sql.Rows for a shared scan function.

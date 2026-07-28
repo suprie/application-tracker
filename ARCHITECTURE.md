@@ -116,3 +116,47 @@ Draft → Fit match → Applied → Rejected / Offer
 | `internal/textutils` | 1 | 6 | Text normalization |
 | `internal/fileutil` | 1 | 5 | File I/O helpers |
 | `rust/` | 2 | — | Rust PDF extractor |
+
+## Web Interface (`ats serve`)
+
+```
+browser ──► internal/server (Gin)
+              │
+              ├─ GET    /api/jds, /api/jds/:id        ─┐
+              ├─ PATCH  /api/jds/:id  (status/url)     │
+              ├─ POST   /api/jds/:id/apply              ├─► internal/service
+              ├─ POST   /api/jds (parse),                │    cores return errors
+              │   /match, /rank, /cover-letter           │    (DI via service.Deps)
+              │   → 202 {task_id}                        ─┘
+              ├─ GET/DELETE /api/tasks/:id  ◄── internal/task (in-memory runner)
+              ├─ GET/POST/PUT /api/companies ─► internal/service/company.go
+              └─ / + assets (embedded SPA) ◄── internal/web (//go:embed all:dist)
+```
+
+The slow LLM actions (parse/match/rank/cover-letter) are submitted to an
+in-memory `internal/task.Runner` (bounded concurrency) and return
+`202 {task_id}`; the SPA polls `GET /api/tasks/:id`. State is in-memory —
+in-flight jobs are lost on restart (single-user local tool).
+
+The Svelte + Vite + Tailwind frontend lives in `web/` (no `.go` files, so
+`go build ./...` skips it) and builds to `internal/web/dist/`, embedded into
+the binary by `internal/web/embed.go`. A committed placeholder
+`internal/web/dist/index.html` keeps `go build` working before `npm run build`.
+
+### New packages
+
+| Package | Purpose |
+|---------|---------|
+| `internal/server` | Gin HTTP server: JD/company/task handlers, SPA embed + fallback |
+| `internal/task` | In-memory bounded-concurrency async job runner |
+| `internal/web` | `//go:embed` of the built frontend (`dist/`) |
+| `internal/service/company.go` | Company CRUD service (normalize, dedup, `ErrCompanyExists`) |
+| `internal/service/deps.go` | `Deps` (shared repos, LLM factory, paths) injected into cores |
+| `internal/domain/company.go`, `status.go` | `Company` model; `NormalizeStatus` shared by CLI + API |
+| `internal/repository/sqlite/company.go` | SQLite `CompanyRepository` |
+| `internal/dto/{jd,company}_dto.go` | API request/response DTOs + mappers |
+| `web/` | Svelte + Vite + Tailwind frontend |
+
+The CLI commands share the same service cores as the server; each `Run*`
+function is a thin wrapper that builds a `service.Deps` and `log.Fatalf` on
+error, so CLI and web stay in sync.

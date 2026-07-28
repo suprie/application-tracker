@@ -13,6 +13,7 @@ import (
 	"suprie/application_tracker/internal/migration"
 	"suprie/application_tracker/internal/repository"
 	sqliterepo "suprie/application_tracker/internal/repository/sqlite"
+	"suprie/application_tracker/internal/server"
 	"suprie/application_tracker/internal/service"
 )
 
@@ -134,6 +135,10 @@ func main() {
 		}
 		runMigrate(os.Args[2])
 
+	case "serve":
+		// ats serve — start the web server on $ATS_PORT (default :8080)
+		runServe()
+
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", command)
 		printUsage()
@@ -172,6 +177,35 @@ func runMigrate(direction string) {
 	}
 }
 
+// runServe starts the HTTP server. The schema is brought current on boot so a
+// fresh checkout works after `go build` without a separate migrate step.
+func runServe() {
+	db, err := sqliterepo.Open(getDBPath())
+	if err != nil {
+		log.Fatalf("opening database: %v\n(hint: run 'ats migrate up' first, or set ATS_DB)", err)
+	}
+	defer db.Close()
+
+	if err := migration.Run(db, "up"); err != nil {
+		log.Fatalf("migrate up: %v", err)
+	}
+
+	deps := service.NewDeps(
+		sqliterepo.NewJobDescriptionRepository(db),
+		sqliterepo.NewCompanyRepository(db),
+	)
+
+	addr := os.Getenv("ATS_PORT")
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	log.Printf("application tracker serving on %s", addr)
+	if err := server.New(deps).Run(addr); err != nil {
+		log.Fatalf("server: %v", err)
+	}
+}
+
 func parseID(raw string) int {
 	id, err := strconv.Atoi(raw)
 	if err != nil || id <= 0 {
@@ -191,8 +225,10 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  ats list [status]")
 	fmt.Fprintln(os.Stderr, "  ats detail <id>")
 	fmt.Fprintln(os.Stderr, "  ats migrate <up|down>")
+	fmt.Fprintln(os.Stderr, "  ats serve")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Statuses: draft, fitmatch, applied, rejected, offer")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Database path: $ATS_DB (default: ./data.db)")
+	fmt.Fprintln(os.Stderr, "Server port:   $ATS_PORT (default: :8080)")
 }

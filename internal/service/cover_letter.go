@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,41 +12,63 @@ import (
 
 	"suprie/application_tracker/internal/coverletter"
 	"suprie/application_tracker/internal/domain"
-	"suprie/application_tracker/internal/llm"
 	"suprie/application_tracker/internal/ranker"
 	"suprie/application_tracker/internal/repository"
 )
 
-// RunCoverLetter generates a tailored LaTeX cover letter for the given JD,
-// compiles it to PDF, and keeps both files.
-//
-// If a cached ranker result exists for this JD (from `ats rank <id>`), it is
-// used to build a focused prompt. Otherwise, falls back to the full profile.
+// CoverLetterOutput is the result of CoverLetter. PDFPath is empty when the
+// LaTeX compiler is unavailable or failed — the .tex source is still written.
+type CoverLetterOutput struct {
+	TeXPath string
+	PDFPath string
+}
+
+// RunCoverLetter is the CLI wrapper for CoverLetter.
 func RunCoverLetter(jdID int, masterProfilePath string, repo repository.JobDescriptionRepository) {
-	jd, err := repo.GetByID(context.Background(), jdID)
+	d := NewDeps(repo, nil)
+	d.ProfilePath = masterProfilePath
+
+	out, err := CoverLetter(context.Background(), d, jdID)
 	if err != nil {
-		log.Fatalf("loading job description id=%d: %v", jdID, err)
+		log.Fatalf("%v", err)
 	}
 
-	profileBytes, err := os.ReadFile(masterProfilePath)
+	fmt.Printf("LaTeX written to %s\n", out.TeXPath)
+	if out.PDFPath != "" {
+		fmt.Printf("PDF compiled to %s\n", out.PDFPath)
+		fmt.Println("\nCover letter generated successfully.")
+	} else {
+		fmt.Fprintf(os.Stderr, "   The .tex file is at %s — compile manually.\n", out.TeXPath)
+	}
+}
+
+// CoverLetter generates a tailored LaTeX cover letter for the given JD and
+// compiles it to PDF. If a cached ranker result exists for this JD (from
+// Rank), it is used to build a focused prompt; otherwise the full profile is
+// used. The .tex is always written; the PDF is best-effort.
+func CoverLetter(ctx context.Context, d Deps, jdID int) (CoverLetterOutput, error) {
+	jd, err := d.JDRepo.GetByID(ctx, jdID)
 	if err != nil {
-		log.Fatalf("reading master profile %s: %v", masterProfilePath, err)
+		return CoverLetterOutput{}, fmt.Errorf("loading job description id=%d: %w", jdID, err)
 	}
 
-	profileStr := string(profileBytes)
-	prompt := buildCoverLetterPrompt(profileStr, jd)
+	profileBytes, err := os.ReadFile(d.ProfilePath)
+	if err != nil {
+		return CoverLetterOutput{}, fmt.Errorf("reading master profile %s: %w", d.ProfilePath, err)
+	}
 
+	prompt := buildCoverLetterPrompt(string(profileBytes), jd)
 	schema := coverletter.BuildJSONSchema()
 
-	lmClient := llm.NewLMStudioClient("cover_letter")
-	response, err := lmClient.Generate(context.Background(), prompt, &schema)
+	client := d.LLM("cover_letter")
+	response, err := client.Generate(ctx, prompt, &schema)
 	if err != nil {
-		log.Fatalf("generating cover letter: %v", err)
+		return CoverLetterOutput{}, fmt.Errorf("generating cover letter: %w", err)
 	}
 
 	var cl coverletter.Response
 	if err = json.Unmarshal([]byte(response), &cl); err != nil {
-		log.Fatalf("unmarshal cover letter response: %v", err)
+		return CoverLetterOutput{}, fmt.Errorf("unmarshal cover letter response: %w", err)
 	}
 
 	// Render LaTeX.
@@ -66,46 +89,44 @@ func RunCoverLetter(jdID int, masterProfilePath string, repo repository.JobDescr
 		Closing:           cl.Closing,
 	})
 	if err != nil {
-		log.Fatalf("rendering LaTeX: %v", err)
+		return CoverLetterOutput{}, fmt.Errorf("rendering LaTeX: %w", err)
 	}
 
 	// Ensure output directory exists.
-	_ = os.MkdirAll("generated", 0755)
+	if err := os.MkdirAll(d.GeneratedDir, 0755); err != nil {
+		return CoverLetterOutput{}, fmt.Errorf("creating output dir: %w", err)
+	}
 
-	base := fmt.Sprintf("generated/cover_letter_%d", jdID)
+	base := filepath.Join(d.GeneratedDir, fmt.Sprintf("cover_letter_%d", jdID))
 	texPath := base + ".tex"
 
 	if err := os.WriteFile(texPath, []byte(tex), 0644); err != nil {
-		log.Fatalf("writing tex file: %v", err)
+		return CoverLetterOutput{}, fmt.Errorf("writing tex file: %w", err)
 	}
 
-	fmt.Printf("LaTeX written to %s\n", texPath)
+	out := CoverLetterOutput{TeXPath: texPath, PDFPath: base + ".pdf"}
 
-	// Compile to PDF.
+	// Compile to PDF (best-effort; pdflatex may be absent).
 	latexCmd := os.Getenv("LATEX_CMD")
 	if latexCmd == "" {
 		latexCmd = "pdflatex"
 	}
 
 	texAbsPath, _ := filepath.Abs(texPath)
-	outDir := filepath.Dir(texAbsPath)
-
 	cmd := exec.Command(latexCmd,
 		"-interaction=nonstopmode",
-		"-output-directory="+outDir,
+		"-output-directory="+filepath.Dir(texAbsPath),
 		texAbsPath,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
+	var latexOut bytes.Buffer
+	cmd.Stdout = &latexOut
+	cmd.Stderr = &latexOut
 	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  LaTeX compilation failed: %v\n", err)
-		fmt.Fprintf(os.Stderr, "   The .tex file is at %s — compile manually.\n", texPath)
-		return
+		d.Logger.Printf("⚠️  LaTeX compilation failed: %v\n%s", err, latexOut.String())
+		out.PDFPath = ""
 	}
 
-	fmt.Printf("PDF compiled to %s\n", base+".pdf")
-	fmt.Println("\nCover letter generated successfully.")
+	return out, nil
 }
 
 // buildCoverLetterPrompt uses a cached ranker result if available, otherwise

@@ -30,3 +30,28 @@ x (A) Add SQL migration runner with embed +apptracker @go -- resolved: internal/
 x (A) Create SQLite repository implementing JobDescriptionRepository interface +apptracker @go -- resolved: internal/repository/sqlite with full CRUD + tests
 x (A) Wire repository into parse-jd service with optional dbpath arg +apptracker @go -- resolved: RunParseJD accepts nil repo for print-only mode
 x (B) Add migrate subcommand to CLI +apptracker @go
+x (A) Create migration 000005: companies table (id, name, normalized_name UNIQUE, website_url, industry, size, country, notes, source, research_summary, created_at, updated_at) +apptracker @go -- resolved: Phase 1 web plan
+x (A) Add Company domain model struct in internal/domain/company.go +apptracker @go -- resolved: Phase 1 web plan
+x (A) Add CompanyRepository interface (GetByID, GetByNormalizedName, Create, List, Update) to internal/repository/repository.go +apptracker @go -- resolved: Phase 1 web plan
+x (A) Implement SQLite CompanyRepository in internal/repository/sqlite/company.go (shared scanner pattern, compile-time interface check) +apptracker @go -- resolved: Phase 1 web plan (trailing-suffix strip + table-driven tests)
+x (A) Add NormalizeCompanyName utility + tests to internal/textutils/ (lowercase, strip Inc/Ltd/LLC/Corp suffixes, collapse whitespace) +apptracker @go -- resolved: Phase 1 web plan
+x (A) Add Company DTOs (CreateCompanyRequest, UpdateCompanyRequest, CompanyResponse) in internal/dto/company_dto.go +apptracker @go -- resolved: Phase 1 web plan
+x (B) Refactor service cores to return errors + accept context/Deps (parse_cv/parse_jd/match/rank/cover_letter/apply), keep Run* CLI wrappers unchanged +apptracker @go -- resolved: Phase 1 web plan
+x (B) Add async task runner internal/task (in-memory, bounded concurrency, Submit/Get/Cancel) + GET/DELETE /api/tasks/:id +apptracker @go -- resolved: Phase 3 web plan
+x (B) Add JD REST API sync endpoints: GET /api/jds, GET/PATCH /api/jds/:id, POST /api/jds/:id/apply +apptracker @go -- resolved: Phase 2 web plan
+x (B) Add async JD actions: POST /api/jds (parse), /match /rank /cover-letter (202 + task_id), GET cover-letter.pdf, /api/tasks/:id +apptracker @go -- resolved: Phase 3 web plan
+x (B) Add company service layer in internal/service/company.go (CreateCompany, ListCompanies, GetCompany, UpdateCompany, ErrCompanyExists) +apptracker @go -- resolved: Phase 2 web plan
+x (B) Add Gin-based HTTP server in internal/server/: /api/jds, /api/companies, embedded SPA + fallback +apptracker @go -- resolved: Phase 2 web plan
+x (B) Scaffold Svelte+Vite+Tailwind frontend in web/ (list/new/detail/companies pages, svelte-spa-router, api.js) +apptracker @web -- resolved: Phase 4 scaffold authored; npm build NOT verified (env blocked npm install)
+(B) Wire company lookup into JD parsing: after extract, call LookupCompany on parsed company name, log match/miss +apptracker @go
+(B) Wire company research into cover letter prompt: inject research_summary/industry/size when matched company exists +apptracker @go
+x (B) Add ats serve CLI command to start HTTP server on $ATS_PORT (default :8080) +apptracker @go -- resolved: Phase 2 web plan
+(C) Add ats company add and ats company list CLI commands +apptracker @go
+x (C) Update ARCHITECTURE.md with new companies, server, and web frontend packages +apptracker @docs -- resolved: Phase 1-4
+(B) Verify frontend build end-to-end: cd web && npm install && npm run build; fix any build errors; confirm `make serve` serves SPA + /api + task polling + cover-letter PDF +apptracker @web due:2026-07-25
+(A) Add panic recovery in task.Runner.runJob so a panicking job marks the task failed instead of permanently killing its worker (pool shrinks; once all workers die the work channel fills and Submit blocks, wedging the server) +apptracker @go due:2026-07-26 -- review: internal/task/runner.go:83 runJob has no defer/recover; runner_test.go has no panic case
+(B) Map SQLite UNIQUE violation on companies.normalized_name to ErrCompanyExists so a duplicate create/update returns 409 not 500 (concurrent collision bypasses the read-then-write pre-check) +apptracker @go -- review: service/company.go:28,89 racy pre-check; sqlite/company.go:78 wraps raw error; handler only maps ErrCompanyExists
+(B) Give task.Runner jobs a per-task timeout (context.WithTimeout) and add Runner.Close() for graceful shutdown; add signal handling + http.Server.Shutdown in runServe +apptracker @go -- review: runner.go:110 derives from context.Background() (no deadline); workers leak on exit; main.go:204 has no shutdown
+(B) Replace fmt.Printf/fmt.Println in service cores (buildCoverLetterPrompt, RunApply) with d.Logger so the HTTP path stops writing emoji to stdout +apptracker @go -- review: cover_letter.go:140,147 reached from async server task
+(C) gofmt -w cmd/ats/main.go (case "rank" block over-indented one level); note 9 other files have pre-existing gofmt drift +apptracker @build -- review: gofmt -l flags main.go in this changeset
+(C) Extract OpenAPI contract api/openapi.yaml from Gin handlers + DTOs to lock the web API +apptracker @docs -- review: feature built with no contract artifact (no api/ dir)

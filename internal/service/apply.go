@@ -9,20 +9,17 @@ import (
 	"suprie/application_tracker/internal/repository"
 )
 
-// RunApply marks the job description as applied.
+// RunApply is the CLI wrapper for Apply.
 func RunApply(jdID int, repo repository.JobDescriptionRepository) {
-	jd, err := repo.GetByID(context.Background(), jdID)
+	d := NewDeps(repo, nil)
+	jd, changed, err := Apply(context.Background(), d, jdID)
 	if err != nil {
-		log.Fatalf("loading job description id=%d: %v", jdID, err)
+		log.Fatalf("%v", err)
 	}
 
-	if jd.Status == domain.StatusApplied {
+	if !changed {
 		fmt.Printf("Job #%d is already marked as Applied.\n", jdID)
 		return
-	}
-
-	if err := repo.UpdateStatus(context.Background(), jdID, domain.StatusApplied); err != nil {
-		log.Fatalf("updating status: %v", err)
 	}
 
 	fmt.Printf("✅ Job #%d — ", jdID)
@@ -37,4 +34,24 @@ func RunApply(jdID int, repo repository.JobDescriptionRepository) {
 	if jd.FitScore != nil {
 		fmt.Printf("   Fit score at time of application: %d/100\n", *jd.FitScore)
 	}
+}
+
+// Apply marks the job description as Applied. It is idempotent: applying an
+// already-applied JD is not an error. changed reports whether the status was
+// actually modified.
+func Apply(ctx context.Context, d Deps, jdID int) (*domain.JobDescription, bool, error) {
+	jd, err := d.JDRepo.GetByID(ctx, jdID)
+	if err != nil {
+		return nil, false, fmt.Errorf("loading job description id=%d: %w", jdID, err)
+	}
+
+	if jd.Status == domain.StatusApplied {
+		return jd, false, nil
+	}
+
+	if err := d.JDRepo.UpdateStatus(ctx, jdID, domain.StatusApplied); err != nil {
+		return nil, false, fmt.Errorf("updating status: %w", err)
+	}
+	jd.Status = domain.StatusApplied
+	return jd, true, nil
 }

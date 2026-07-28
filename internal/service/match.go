@@ -9,47 +9,67 @@ import (
 	"strings"
 
 	"suprie/application_tracker/internal/domain"
-	"suprie/application_tracker/internal/llm"
 	"suprie/application_tracker/internal/matcher"
 	"suprie/application_tracker/internal/rag"
 	"suprie/application_tracker/internal/repository"
 )
 
-// RunMatch performs an AI-powered semantic fit match between the master profile
-// and the job description identified by jdID. If chunked profile data is available
-// and fresh, only the chunks most relevant to the JD (via BM25) are used in the
-// prompt. Otherwise, falls back to the full master profile.
+// RunMatch is the CLI wrapper for Match.
 func RunMatch(masterProfilePath string, jdID int, repo repository.JobDescriptionRepository) {
+	d := NewDeps(repo, nil)
+	d.ProfilePath = masterProfilePath
+
+	match, err := Match(context.Background(), d, jdID)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
 	jd, err := repo.GetByID(context.Background(), jdID)
 	if err != nil {
-		log.Fatalf("loading job description id=%d: %v", jdID, err)
+		log.Fatalf("reloading job description id=%d: %v", jdID, err)
 	}
+	printMatchResult(jd, match)
+}
 
-	profileBytes, err := os.ReadFile(masterProfilePath)
+// Match runs the AI fit-match between the master profile and the JD identified
+// by jdID, persists the fit score, and returns the match response. If chunked
+// profile data is available and fresh, only the BM25-retrieved chunks are used
+// in the prompt; otherwise it falls back to the full profile.
+func Match(ctx context.Context, d Deps, jdID int) (*matcher.MatchResponse, error) {
+	jd, err := d.JDRepo.GetByID(ctx, jdID)
 	if err != nil {
-		log.Fatalf("reading master profile %s: %v", masterProfilePath, err)
+		return nil, fmt.Errorf("loading job description id=%d: %w", jdID, err)
 	}
 
-	profileStr := string(profileBytes)
-	prompt := buildMatchPrompt(masterProfilePath, profileStr, jd)
+	profileBytes, err := os.ReadFile(d.ProfilePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading master profile %s: %w", d.ProfilePath, err)
+	}
+
+	prompt := buildMatchPrompt(d.ProfilePath, string(profileBytes), jd)
 	schema := matcher.BuildMatchJSONSchema()
 
-	lmClient := llm.NewLMStudioClient("match")
-	response, err := lmClient.Generate(context.Background(), prompt, &schema)
+	client := d.LLM("match")
+	response, err := client.Generate(ctx, prompt, &schema)
 	if err != nil {
-		log.Fatalf("generating match analysis: %v", err)
+		return nil, fmt.Errorf("generating match analysis: %w", err)
 	}
 
 	var match matcher.MatchResponse
 	if err := json.Unmarshal([]byte(response), &match); err != nil {
-		log.Fatalf("unmarshal match response: %v", err)
+		return nil, fmt.Errorf("unmarshal match response: %w", err)
 	}
 
-	if err := repo.UpdateFitScore(context.Background(), jdID, match.FitScore, match.Summary); err != nil {
-		log.Fatalf("saving fit score: %v", err)
+	if err := d.JDRepo.UpdateFitScore(ctx, jdID, match.FitScore, match.Summary); err != nil {
+		return nil, fmt.Errorf("saving fit score: %w", err)
 	}
 
-	fmt.Printf("\n=== Match Result for JD #%d ===\n", jdID)
+	return &match, nil
+}
+
+// printMatchResult prints the match summary to stdout (CLI only).
+func printMatchResult(jd *domain.JobDescription, match *matcher.MatchResponse) {
+	fmt.Printf("\n=== Match Result for JD #%d ===\n", jd.ID)
 	if jd.Company != nil {
 		fmt.Printf("Company: %s\n", *jd.Company)
 	}

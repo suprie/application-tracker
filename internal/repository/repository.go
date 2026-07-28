@@ -18,4 +18,15 @@ type JobDescriptionRepository interface {
 	UpdateFitScore(ctx context.Context, id int, score int, summary string) error
 	// UpdateRankerResult stores the experience ranker JSON output for this JD.
 	UpdateRankerResult(ctx context.Context, id int, rankerJSON string) error
+	// UpdateApplyURL sets the apply URL (nil clears it).
+	UpdateApplyURL(ctx context.Context, id int, applyURL *string) error
+}
+
+// CompanyRepository persists researched employer records.
+type CompanyRepository interface {
+	GetByID(ctx context.Context, id int) (*domain.Company, error)
+	GetByNormalizedName(ctx context.Context, normalized string) (*domain.Company, error)
+	Create(ctx context.Context, company *domain.Company) error
+	List(ctx context.Context) ([]domain.Company, error)
+	Update(ctx context.Context, company *domain.Company) error
 }

@@ -11,58 +11,61 @@ import (
 	"suprie/application_tracker/internal/domain"
 	"suprie/application_tracker/internal/dto"
 	"suprie/application_tracker/internal/jdextractor"
-	"suprie/application_tracker/internal/llm"
 	"suprie/application_tracker/internal/repository"
 	"suprie/application_tracker/internal/textutils"
 )
 
-// RunParseJD extracts a job description from a PDF and optionally persists it.
-// Pass nil for repo to skip persistence (print only).
-// applyURL is the URL of the job posting (optional).
+// RunParseJD is the CLI wrapper for ParseJDText.
 func RunParseJD(filepath string, applyURL string, repo repository.JobDescriptionRepository) {
-
 	bytes, err := os.ReadFile(filepath)
 	if err != nil {
 		log.Fatalf("read file %s : %v", filepath, err)
 	}
 
-	normalizeText := textutils.NormalizeText(string(bytes))
-
-	prompt := jdextractor.BuildJDParserPrompt(
-		normalizeText,
-	)
-
-	lmClient := llm.NewLMStudioClient("parse_jd")
-	schema := jdextractor.BuildJSONSchema()
-
-	response, err := lmClient.Generate(context.Background(), prompt, &schema)
+	d := NewDeps(repo, nil)
+	jd, err := ParseJDText(context.Background(), d, string(bytes), applyURL)
 	if err != nil {
-		log.Fatalf("extracting JD %v", err)
+		log.Fatalf("%v", err)
+	}
+	log.Printf("Response: %+v\n", *jd)
+}
+
+// ParseJDText extracts a job description from raw text and, when a repository
+// is configured, persists it. It is the server-callable core: it takes the JD
+// text directly (so the web layer can pass pasted text) and returns errors
+// instead of exiting the process.
+func ParseJDText(ctx context.Context, d Deps, text, applyURL string) (*domain.JobDescription, error) {
+	prompt := jdextractor.BuildJDParserPrompt(textutils.NormalizeText(text))
+
+	client := d.LLM("parse_jd")
+	schema := jdextractor.BuildJSONSchema()
+	response, err := client.Generate(ctx, prompt, &schema)
+	if err != nil {
+		return nil, fmt.Errorf("extracting JD: %w", err)
 	}
 
 	var jsonResponse dto.JobDescriptionResponse
-
 	if err = json.Unmarshal([]byte(response), &jsonResponse); err != nil {
-		log.Fatalf("unmarshal response: %v", err)
+		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
 	jd, err := mapToJobDescription(&jsonResponse)
 	if err != nil {
-		log.Fatalf("map job description: %v", err)
+		return nil, fmt.Errorf("map job description: %w", err)
 	}
 
 	if applyURL != "" {
 		jd.ApplyURL = &applyURL
 	}
 
-	if repo != nil {
-		if err := repo.Create(context.Background(), &jd); err != nil {
-			log.Fatalf("saving job description: %v", err)
+	if d.JDRepo != nil {
+		if err := d.JDRepo.Create(ctx, &jd); err != nil {
+			return nil, fmt.Errorf("saving job description: %w", err)
 		}
-		log.Printf("Saved job description (id=%d)\n", jd.ID)
+		d.Logger.Printf("Saved job description (id=%d)", jd.ID)
 	}
 
-	log.Printf("Response: %+v\n", jd)
+	return &jd, nil
 }
 
 func mapToJobDescription(response *dto.JobDescriptionResponse) (domain.JobDescription, error) {
@@ -87,16 +90,16 @@ func mapToJobDescription(response *dto.JobDescriptionResponse) (domain.JobDescri
 	}
 
 	return domain.JobDescription{
-		Company:                response.Company,
-		RoleTitle:              response.RoleTitle,
-		Seniority:              response.Seniority,
-		EmploymentType:         response.EmploymentType,
-		WorkArrangement:        response.WorkArrangement,
-		Location:               response.Location,
-		RequirementsJSON:       string(requirementJSON),
-		ResponsibilitiesJSON:   string(responsibilitiesJSON),
-		KeywordsJSON:           string(keywordJSON),
-		ParsingWarningJSON:     string(parsingWarningsJSON),
-		CreatedAt:              time.Now(),
+		Company:              response.Company,
+		RoleTitle:            response.RoleTitle,
+		Seniority:            response.Seniority,
+		EmploymentType:       response.EmploymentType,
+		WorkArrangement:      response.WorkArrangement,
+		Location:             response.Location,
+		RequirementsJSON:     string(requirementJSON),
+		ResponsibilitiesJSON: string(responsibilitiesJSON),
+		KeywordsJSON:         string(keywordJSON),
+		ParsingWarningJSON:   string(parsingWarningsJSON),
+		CreatedAt:            time.Now(),
 	}, nil
 }

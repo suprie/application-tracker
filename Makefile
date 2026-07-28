@@ -1,4 +1,4 @@
-.PHONY: build-rust build-go build clean run
+.PHONY: build-rust build-go build clean run web-install web-build web-dev serve
 
 RUST_BINARY = rust/target/release/ats-reader
 BIN_DIR = bin
@@ -18,3 +18,17 @@ clean:
 
 run: build
 	./$(BIN_DIR)/ats $(ARGS)
+
+web-install:
+	cd web && npm install
+
+# Builds the Svelte frontend into internal/web/dist (embedded via //go:embed).
+web-build:
+	cd web && npm run build
+
+web-dev:
+	cd web && npm run dev
+
+# Full stack: build the Go binary + frontend, then serve.
+serve: build-go web-build
+	./$(BIN_DIR)/ats serve

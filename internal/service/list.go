@@ -12,22 +12,9 @@ import (
 
 // RunList displays all job descriptions, optionally filtered by status.
 func RunList(statusFilter string, repo repository.JobDescriptionRepository) {
-	// Normalize the filter: "draft" → "Draft", "" → "".
-	var normalized string
-	switch strings.ToLower(statusFilter) {
-	case "draft":
-		normalized = domain.StatusDraft
-	case "fit match", "fitmatch", "fit_match":
-		normalized = domain.StatusFitMatch
-	case "applied":
-		normalized = domain.StatusApplied
-	case "rejected":
-		normalized = domain.StatusRejected
-	case "offer":
-		normalized = domain.StatusOffer
-	case "":
-		normalized = ""
-	default:
+	// Normalize the filter: "draft" → "Draft", "" → "" (no filter).
+	normalized, ok := domain.NormalizeStatus(statusFilter)
+	if !ok {
 		log.Fatalf("unknown status filter: %q (use: draft, fitmatch, applied, rejected, offer)", statusFilter)
 	}
 

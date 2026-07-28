@@ -4,9 +4,21 @@ bin/*
 main
 .env
 data.db
+data.db-shm
+data.db-wal
 .DS_Store
 *.aux
 *.log
 *.out
 *.pdf
 *.tex
+
+# Frontend: ignore node_modules and built assets, but keep the embed placeholder.
+web/node_modules/
+internal/web/dist/*
+!internal/web/dist/index.html
+
+# Tool/session state, not project source.
+.claude/
+.loopdeck/
+.agents/
