@@ -30,3 +30,11 @@ type CompanyRepository interface {
 	List(ctx context.Context) ([]domain.Company, error)
 	Update(ctx context.Context, company *domain.Company) error
 }
+
+// SettingsRepository persists the single global LLM configuration.
+type SettingsRepository interface {
+	// Get returns the stored settings, or nil, nil if none have been saved yet.
+	Get(ctx context.Context) (*domain.LLMSettings, error)
+	// Save upserts the settings row.
+	Save(ctx context.Context, settings *domain.LLMSettings) error
+}

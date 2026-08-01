@@ -194,6 +194,8 @@ func runServe() {
 		sqliterepo.NewJobDescriptionRepository(db),
 		sqliterepo.NewCompanyRepository(db),
 	)
+	deps.SettingsRepo = sqliterepo.NewSettingsRepository(db)
+	deps.LLM = service.SettingsAwareLLMFactory(deps)
 
 	addr := os.Getenv("ATS_PORT")
 	if addr == "" {

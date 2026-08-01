@@ -39,6 +39,10 @@ export const api = {
   // Tasks
   getTask: (id) => request(`/api/tasks/${id}`),
   cancelTask: (id) => request(`/api/tasks/${id}`, { method: 'DELETE' }),
+
+  // LLM settings
+  getLLMSettings: () => request('/api/settings/llm'),
+  updateLLMSettings: (body) => request('/api/settings/llm', { method: 'PUT', body: JSON.stringify(body) }),
 }
 
 // pollTask calls onUpdate with each task snapshot, resolving on done/failed

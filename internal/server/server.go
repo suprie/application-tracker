@@ -44,6 +44,10 @@ func New(deps service.Deps) *gin.Engine {
 		// Async tasks.
 		api.GET("/tasks/:id", h.getTask)
 		api.DELETE("/tasks/:id", h.cancelTask)
+
+		// LLM settings.
+		api.GET("/settings/llm", h.getLLMSettings)
+		api.PUT("/settings/llm", h.updateLLMSettings)
 	}
 
 	h.registerSPA(r)
