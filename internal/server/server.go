@@ -35,6 +35,9 @@ func New(deps service.Deps) *gin.Engine {
 		api.POST("/jds/:id/cover-letter", h.coverLetterJD)
 		api.GET("/jds/:id/cover-letter.pdf", h.coverLetterPDF)
 
+		// Master profile.
+		api.POST("/profile/cv", h.uploadCV)
+
 		// Companies.
 		api.GET("/companies", h.listCompanies)
 		api.POST("/companies", h.createCompany)
