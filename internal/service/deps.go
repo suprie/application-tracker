@@ -14,6 +14,7 @@ import (
 type Deps struct {
 	JDRepo        repository.JobDescriptionRepository
 	CompanyRepo   repository.CompanyRepository
+	SettingsRepo  repository.SettingsRepository // nil for CLI paths that don't open a DB
 	LLM           func(stage string) llm.LLMClient
 	ProfilePath   string // master profile YAML (default generated/master_profile.yaml)
 	GeneratedDir  string // output dir for cover letters etc. (default generated)
@@ -37,10 +38,10 @@ func NewDeps(jd repository.JobDescriptionRepository, company repository.CompanyR
 }
 
 // DefaultLLMFactory builds an LLM client for a pipeline stage from environment
-// variables (see llm.NewLMStudioClient). It is the seam used for dependency
+// variables (see llm.NewClient). It is the seam used for dependency
 // injection in tests.
 func DefaultLLMFactory(stage string) llm.LLMClient {
-	return llm.NewLMStudioClient(stage)
+	return llm.NewClient(stage)
 }
 
 func envOr(key, fallback string) string {

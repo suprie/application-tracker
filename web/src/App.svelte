@@ -5,6 +5,7 @@
   import Detail from './pages/Detail.svelte'
   import Companies from './pages/Companies.svelte'
   import CompanyDetail from './pages/CompanyDetail.svelte'
+  import Settings from './pages/Settings.svelte'
   import Profile from './pages/Profile.svelte'
 
   // Static routes are listed before their param siblings so they win.
@@ -15,6 +16,7 @@
     '/companies/new': CompanyDetail,
     '/companies/:id': CompanyDetail,
     '/companies': Companies,
+    '/settings': Settings,
     '/profile': Profile,
   }
 </script>
@@ -23,6 +25,7 @@
   <nav class="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm">
     <a href="/" use:link class="font-semibold text-slate-800">Application Tracker</a>
     <a href="/companies" use:link class="text-slate-600 hover:text-slate-900">Companies</a>
+    <a href="/settings" use:link class="text-slate-600 hover:text-slate-900">Settings</a>
     <a href="/profile" use:link class="text-slate-600 hover:text-slate-900">Profile</a>
   </nav>
 </header>
