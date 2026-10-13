@@ -63,8 +63,8 @@ the de facto design for those parts (see `internal/server/`, `web/src/`)._
 
 ### Phase 3 — CV upload gap
 
-- [ ] `cli-web/cv-upload-api` POST endpoint accepting a CV file, running parse-cv, writing the master profile
-- [ ] `cli-web/cv-upload-ui` upload page/form wired to the new endpoint
+- [x] `cli-web/cv-upload-api` POST endpoint accepting a CV file, running parse-cv, writing the master profile
+- [x] `cli-web/cv-upload-ui` upload page/form wired to the new endpoint
 
 ### Phase 4 — Verification
 
@@ -72,5 +72,5 @@ the de facto design for those parts (see `internal/server/`, `web/src/`)._
 
 ## Open Questions
 
-- Where should the uploaded master profile be stored — overwrite `generated/master_profile.yaml`, or support multiple named profiles?
-- Should CV upload run synchronously or go through the async task runner like match/rank/cover-letter?
+- ~~Where should the uploaded master profile be stored — overwrite `generated/master_profile.yaml`, or support multiple named profiles?~~ Resolved 2026-07-29: overwrite, same as CLI `parse-cv`.
+- ~~Should CV upload run synchronously or go through the async task runner like match/rank/cover-letter?~~ Resolved 2026-07-29: async, via the task runner, consistent with the other LLM-backed endpoints.

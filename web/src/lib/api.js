@@ -1,8 +1,9 @@
 // Thin fetch wrapper for the tracker API + a task-polling helper.
 
 async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...(options.headers || {}) },
     ...options,
   })
   if (!res.ok) {
@@ -29,6 +30,13 @@ export const api = {
   matchTask: (id) => request(`/api/jds/${id}/match`, { method: 'POST' }),
   rankTask: (id) => request(`/api/jds/${id}/rank`, { method: 'POST' }),
   coverLetterTask: (id) => request(`/api/jds/${id}/cover-letter`, { method: 'POST' }),
+
+  // Profile
+  uploadCvTask: (file) => {
+    const body = new FormData()
+    body.append('cv', file)
+    return request('/api/profile/cv', { method: 'POST', body })
+  },
 
   // Companies
   listCompanies: (q) => request('/api/companies' + (q ? `?q=${encodeURIComponent(q)}` : '')),
