@@ -3,7 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // The built SPA is emitted into the Go embed package's dist/ so it is served
 // from the single binary via internal/web/embed.go. During `vite dev`, /api
-// requests are proxied to the Go server (ats serve) on :8080.
+// requests are proxied to the Go server (ats serve) on 127.0.0.1:8080.
 export default defineConfig({
   plugins: [svelte()],
   build: {
@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': 'http://127.0.0.1:8080',
     },
   },
 })

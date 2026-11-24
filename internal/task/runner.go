@@ -118,8 +118,8 @@ func (r *Runner) Submit(kind string, fn func(ctx context.Context) (any, error)) 
 // Get returns a snapshot of a task, or ok=false if unknown.
 func (r *Runner) Get(id string) (*Result, bool) {
 	r.mu.RLock()
+	defer r.mu.RUnlock()
 	t, ok := r.tasks[id]
-	r.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}

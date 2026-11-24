@@ -40,3 +40,10 @@ func ProviderNames() []string {
 	}
 	return names
 }
+
+// SupportsProvider reports whether the name selects an API or harness provider.
+func SupportsProvider(name string) bool {
+	_, api := providers[name]
+	_, harness := harnessCommands[name]
+	return api || harness
+}

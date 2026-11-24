@@ -20,7 +20,7 @@ run: build
 	./$(BIN_DIR)/ats $(ARGS)
 
 web-install:
-	cd web && npm install
+	cd web && npm ci
 
 # Builds the Svelte frontend into internal/web/dist (embedded via //go:embed).
 web-build:
@@ -29,6 +29,7 @@ web-build:
 web-dev:
 	cd web && npm run dev
 
-# Full stack: build the Go binary + frontend, then serve.
-serve: build-go web-build
+# Build the frontend before compiling it into the server binary.
+serve: web-build
+	$(MAKE) build-go
 	./$(BIN_DIR)/ats serve
