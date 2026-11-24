@@ -11,3 +11,11 @@ type LLMSettings struct {
 	APIKey    string
 	UpdatedAt time.Time
 }
+
+// LLMSettingsUpdate contains only the fields a caller wants to change.
+type LLMSettingsUpdate struct {
+	Provider *string `json:"provider"`
+	Model    *string `json:"model"`
+	BaseURL  *string `json:"base_url"`
+	APIKey   *string `json:"api_key"`
+}

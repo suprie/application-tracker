@@ -16,16 +16,6 @@ type LLMSettingsResponse struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
-// UpdateLLMSettingsRequest is the body of PUT /api/settings/llm. Pointer
-// fields override the stored value only when present; APIKey omitted leaves
-// the stored key unchanged, an explicit "" clears it.
-type UpdateLLMSettingsRequest struct {
-	Provider *string `json:"provider"`
-	Model    *string `json:"model"`
-	BaseURL  *string `json:"base_url"`
-	APIKey   *string `json:"api_key"`
-}
-
 func ToLLMSettingsResponse(s *domain.LLMSettings) LLMSettingsResponse {
 	resp := LLMSettingsResponse{
 		Provider:  s.Provider,

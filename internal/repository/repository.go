@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"suprie/application_tracker/internal/domain"
 )
@@ -31,10 +32,12 @@ type CompanyRepository interface {
 	Update(ctx context.Context, company *domain.Company) error
 }
 
+var ErrSettingsProviderRequired = errors.New("provider is required")
+
 // SettingsRepository persists the single global LLM configuration.
 type SettingsRepository interface {
 	// Get returns the stored settings, or nil, nil if none have been saved yet.
 	Get(ctx context.Context) (*domain.LLMSettings, error)
-	// Save upserts the settings row.
-	Save(ctx context.Context, settings *domain.LLMSettings) error
+	// Update applies supplied fields atomically and returns the saved settings.
+	Update(ctx context.Context, patch domain.LLMSettingsUpdate) (*domain.LLMSettings, error)
 }

@@ -136,7 +136,7 @@ func main() {
 		runMigrate(os.Args[2])
 
 	case "serve":
-		// ats serve — start the web server on $ATS_PORT (default :8080)
+		// ats serve — start the web server on $ATS_PORT (default 127.0.0.1:8080)
 		runServe()
 
 	default:
@@ -199,7 +199,7 @@ func runServe() {
 
 	addr := os.Getenv("ATS_PORT")
 	if addr == "" {
-		addr = ":8080"
+		addr = "127.0.0.1:8080"
 	}
 
 	log.Printf("application tracker serving on %s", addr)
@@ -232,5 +232,5 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "Statuses: draft, fitmatch, applied, rejected, offer")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Database path: $ATS_DB (default: ./data.db)")
-	fmt.Fprintln(os.Stderr, "Server port:   $ATS_PORT (default: :8080)")
+	fmt.Fprintln(os.Stderr, "Server address: $ATS_PORT (default: 127.0.0.1:8080)")
 }

@@ -85,13 +85,17 @@ func NewClientFromSettings(stage string, s Settings) LLMClient {
 		apiKey = &s.APIKey
 	}
 
+	httpClient := newStageHTTPClient()
+	httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return LMStudioClient{
 		BaseURL:  baseURL,
 		Model:    model,
 		APIKey:   apiKey,
 		Provider: provider,
 		Stage:    stage,
-		client:   newStageHTTPClient(),
+		client:   httpClient,
 	}
 }
 

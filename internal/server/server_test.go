@@ -49,6 +49,7 @@ func newTestServerWithLLM(t *testing.T, llmFactory func(string) llm.LLMClient) (
 	jdRepo := sqliterepo.NewJobDescriptionRepository(db)
 	companyRepo := sqliterepo.NewCompanyRepository(db)
 	deps := service.NewDeps(jdRepo, companyRepo)
+	deps.SettingsRepo = sqliterepo.NewSettingsRepository(db)
 	if llmFactory != nil {
 		deps.LLM = llmFactory
 	}

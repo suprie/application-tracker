@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -19,39 +20,31 @@ var harnessCommands = map[string]string{ //nolint:gochecknoglobals
 	"codex-harness":  "codex",
 }
 
-// harnessDefaultArgs are the non-interactive, single-shot invocation flags
-// for each supported CLI. The prompt is always sent on stdin, so these never
-// carry a positional prompt argument.
-var harnessDefaultArgs = map[string][]string{ //nolint:gochecknoglobals
-	"claude": {"-p"},
-	"codex":  {"exec", "-"},
+// The harnesses only need to generate text from the prompt on stdin.
+var harnessArgs = map[string][]string{
+	"claude": {"-p", "--safe-mode", "--no-chrome", "--strict-mcp-config", "--tools", "", "--no-session-persistence"},
+	"codex": {
+		"-a", "never", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config",
+		"--sandbox", "read-only", "--disable", "shell_tool", "--disable", "unified_exec",
+		"--disable", "apps", "--disable", "plugins", "--disable", "hooks",
+		"-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0", "-",
+	},
 }
 
-// HarnessClient implements LLMClient by shelling out to an agent CLI (e.g.
-// `claude -p`, `codex exec`) instead of calling an HTTP API. The prompt is
-// piped over stdin to avoid ARG_MAX limits on large CV/JD prompts.
 type HarnessClient struct {
 	Command string
-	Args    []string
 	Stage   string
 }
 
-// NewHarnessClient builds a HarnessClient for the given CLI command,
-// resolving args from HARNESS_ARGS_{STAGE} / HARNESS_ARGS / built-in default.
 func NewHarnessClient(command, stage string) HarnessClient {
-	args := harnessDefaultArgs[command]
-	if raw := resolveStage("HARNESS_ARGS", stage, ""); raw != "" {
-		args = strings.Fields(raw)
-	}
-	return HarnessClient{Command: command, Args: args, Stage: stage}
+	return HarnessClient{Command: command, Stage: stage}
 }
 
 // Generate runs the harness CLI once with the prompt on stdin and returns
-// its stdout. Structured output is requested by appending the JSON schema
-// to the prompt — harness CLIs have no native response_format equivalent.
+// its stdout. Both harnesses receive the same prompt and optional JSON schema.
 func (c HarnessClient) Generate(ctx context.Context, prompt string, responseFormat *ResponseFormat) (string, error) {
 	fullPrompt := prompt
-	if responseFormat != nil {
+	if responseFormat != nil && responseFormat.JSONSchema.Schema != nil {
 		schema, err := json.Marshal(responseFormat.JSONSchema.Schema)
 		if err != nil {
 			return "", fmt.Errorf("marshal response schema: %w", err)
@@ -59,23 +52,37 @@ func (c HarnessClient) Generate(ctx context.Context, prompt string, responseForm
 		fullPrompt += fmt.Sprintf("\n\nRespond with ONLY valid JSON matching this schema, no markdown fences, no commentary:\n%s", schema)
 	}
 
-	cmd := exec.CommandContext(ctx, c.Command, c.Args...)
-	cmd.Stdin = strings.NewReader(fullPrompt)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	log.Printf("→ harness request [%s] %s %v prompt=%dchars", c.Stage, c.Command, c.Args, len(fullPrompt))
-	start := time.Now()
-	err := cmd.Run()
-	elapsed := time.Since(start)
-
-	if err != nil {
-		log.Printf("✗ harness error [%s] after %s: %v", c.Stage, elapsed.Round(time.Millisecond), err)
-		return "", fmt.Errorf("harness %s: %w: %s", c.Command, err, strings.TrimSpace(stderr.String()))
+	args, ok := harnessArgs[c.Command]
+	if !ok {
+		return "", fmt.Errorf("unsupported harness %q", c.Command)
 	}
+	dir, err := os.MkdirTemp("", "ats-harness-")
+	if err != nil {
+		return "", fmt.Errorf("create harness working directory: %w", err)
+	}
+	defer os.RemoveAll(dir)
 
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, c.Command, args...)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(fullPrompt)
+	cmd.WaitDelay = 2 * time.Second
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	log.Printf("harness request [%s] %s prompt=%d bytes", c.Stage, c.Command, len(fullPrompt))
+	start := time.Now()
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return "", fmt.Errorf("harness %s: %w", c.Command, err)
+	}
 	out := strings.TrimSpace(stdout.String())
-	log.Printf("← harness response [%s] %s %dchars", c.Stage, elapsed.Round(time.Millisecond), len(out))
+	if out == "" {
+		return "", fmt.Errorf("harness %s returned an empty response", c.Command)
+	}
+	log.Printf("harness response [%s] %s %d bytes", c.Stage, time.Since(start).Round(time.Millisecond), len(out))
 	return out, nil
 }

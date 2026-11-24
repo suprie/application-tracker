@@ -4,69 +4,71 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"suprie/application_tracker/internal/domain"
-	"suprie/application_tracker/internal/dto"
 	"suprie/application_tracker/internal/llm"
+	"suprie/application_tracker/internal/repository"
 )
 
-// GetLLMSettings returns the stored LLM settings, or nil if none are saved
-// yet (the server then falls back to AI_* env vars).
+var ErrInvalidLLMSettings = errors.New("invalid LLM settings")
+
+// GetLLMSettings returns nil when the server is still using environment settings.
 func GetLLMSettings(ctx context.Context, d Deps) (*domain.LLMSettings, error) {
 	s, err := d.SettingsRepo.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("loading llm settings: %w", err)
+		return nil, fmt.Errorf("loading LLM settings: %w", err)
 	}
 	return s, nil
 }
 
-// UpdateLLMSettings merges the non-nil fields of req onto the stored
-// settings (or a zero-value baseline if none exist yet) and persists it.
-func UpdateLLMSettings(ctx context.Context, d Deps, req dto.UpdateLLMSettingsRequest) (*domain.LLMSettings, error) {
-	existing, err := d.SettingsRepo.Get(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("loading llm settings: %w", err)
+func UpdateLLMSettings(ctx context.Context, d Deps, patch domain.LLMSettingsUpdate) (*domain.LLMSettings, error) {
+	if patch.Provider != nil && !llm.SupportsProvider(*patch.Provider) {
+		return nil, fmt.Errorf("%w: choose a supported provider", ErrInvalidLLMSettings)
 	}
-	if existing == nil {
-		existing = &domain.LLMSettings{}
+	if patch.BaseURL != nil && *patch.BaseURL != "" {
+		u, err := url.Parse(*patch.BaseURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
+			u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return nil, fmt.Errorf("%w: base URL must be an HTTP(S) endpoint without credentials, a query, or a fragment", ErrInvalidLLMSettings)
+		}
 	}
-
-	if req.Provider != nil {
-		existing.Provider = *req.Provider
-	}
-	if req.Model != nil {
-		existing.Model = *req.Model
-	}
-	if req.BaseURL != nil {
-		existing.BaseURL = *req.BaseURL
-	}
-	if req.APIKey != nil {
-		existing.APIKey = *req.APIKey
-	}
-	if existing.Provider == "" {
-		return nil, errors.New("provider is required")
+	if patch.APIKey != nil && strings.ContainsAny(*patch.APIKey, "\r\n") {
+		return nil, fmt.Errorf("%w: API key contains a line break", ErrInvalidLLMSettings)
 	}
 
-	if err := d.SettingsRepo.Save(ctx, existing); err != nil {
-		return nil, fmt.Errorf("saving llm settings: %w", err)
+	s, err := d.SettingsRepo.Update(ctx, patch)
+	if errors.Is(err, repository.ErrSettingsProviderRequired) {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidLLMSettings, err)
 	}
-	return existing, nil
+	return s, err
 }
 
-// SettingsAwareLLMFactory builds an LLM client factory that prefers the
-// repo-backed settings (set via the web UI) and falls back to AI_* env vars
-// when none have been saved yet.
 func SettingsAwareLLMFactory(d Deps) func(stage string) llm.LLMClient {
 	return func(stage string) llm.LLMClient {
-		s, err := d.SettingsRepo.Get(context.Background())
-		if err != nil || s == nil {
-			return llm.NewClient(stage)
-		}
-		return llm.NewClientFromSettings(stage, llm.Settings{
-			Provider: s.Provider,
-			Model:    s.Model,
-			BaseURL:  s.BaseURL,
-			APIKey:   s.APIKey,
-		})
+		return settingsAwareLLM{deps: d, stage: stage}
 	}
+}
+
+type settingsAwareLLM struct {
+	deps  Deps
+	stage string
+}
+
+func (c settingsAwareLLM) Generate(ctx context.Context, prompt string, format *llm.ResponseFormat) (string, error) {
+	s, err := GetLLMSettings(ctx, c.deps)
+	if err != nil {
+		return "", err
+	}
+	if s == nil {
+		return llm.NewClient(c.stage).Generate(ctx, prompt, format)
+	}
+	client := llm.NewClientFromSettings(c.stage, llm.Settings{
+		Provider: s.Provider,
+		Model:    s.Model,
+		BaseURL:  s.BaseURL,
+		APIKey:   s.APIKey,
+	})
+	return client.Generate(ctx, prompt, format)
 }
