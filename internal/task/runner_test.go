@@ -115,8 +115,8 @@ func TestRunner_Concurrency(t *testing.T) {
 		ids[i] = r.Submit("test", func(ctx context.Context) (any, error) {
 			time.Sleep(10 * time.Millisecond)
 			mu.Lock()
+			defer mu.Unlock()
 			completed++
-			mu.Unlock()
 			return completed, nil
 		})
 	}
